@@ -1,54 +1,71 @@
-const Event = require('../models/Event');
+import Event from '../models/Event.js';
+import User from '../models/Users.js';
+import { sendConfirmationEmail } from '../utils/mail.js';
 
-exports.createEvent = async (req, res) => {
+export const createEvent = async (req, res) => {
   try {
     const { name, date, time, description } = req.body;
-    const event = await Event.create({ name, date, time, description, organizer: req.user.id });
-    res.status(201).json({ event });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-};
+    const organizer = req.user.id;
+    const existingEvent = await Event.findOne({ name, date, time });
+    if (existingEvent) {
+      return res.status(400).json({ message: 'Duplicate event: An event with this name, date, and time already exists.' });
+    }
 
-exports.updateEvent = async (req, res) => {
-  try {
-    const event = await Event.findOneAndUpdate(
-      { _id: req.params.id, organizer: req.user.id },
-      req.body,
-      { new: true }
-    );
-    if (!event) return res.status(404).json({ error: 'Event not found or unauthorized' });
-    res.json({ event });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-};
+    const event = new Event({
+      name,
+      date,
+      time,
+      description,
+      organizer,
+      attendee: [],
+    });
 
-exports.deleteEvent = async (req, res) => {
-  try {
-    const event = await Event.findOneAndDelete({ _id: req.params.id, organizer: req.user.id });
-    if (!event) return res.status(404).json({ error: 'Event not found or unauthorized' });
-    res.json({ message: 'Deleted successfully' });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-};
-
-exports.registerParticipant = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
-    if (!event) return res.status(404).json({ error: 'Event not found' });
-    if (event.participants.includes(req.user.id))
-      return res.status(400).json({ error: 'Already registered' });
-    event.participants.push(req.user.id);
     await event.save();
-    res.json({ event });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+
+    res.status(201).json({
+      message: 'Event created successfully',
+      event,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.getEvents = async (req, res) => {
-  const events = await Event.find().populate('organizer', 'username email');
-  res.json(events);
+export const getAllEvents = async (req, res) => {
+  try {
+    const events = await Event.find()
+      .populate('organizer', 'username email')
+      .populate('attendee', 'username email'); 
+
+    res.status(200).json({
+      message: 'Events retrieved successfully',
+      events,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
 };
+
+export const registerForEvent = async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    const attendeeId = req.user.id;
+    // console.log(eventId,attendeeId)
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found.' });
+    }
+    const user = await User.findById(attendeeId);
+    if (event.attendee.includes(attendeeId)) {
+      return res.status(400).json({ message: 'You are already registered for this event.' });
+    }
+    event.attendee.push(attendeeId);
+    await event.save();
+    await sendConfirmationEmail(user,event);
+    res.status(200).json({ message: 'Successfully registered for the event.', event });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+

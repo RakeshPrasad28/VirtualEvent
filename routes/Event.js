@@ -1,18 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const auth = require('../middleware/auth');
-const {
-  createEvent,
-  updateEvent,
-  deleteEvent,
-  getEvents,
-  registerParticipant,
-} = require('../controllers/eventController');
+import express from 'express'
+import { authorizeAttendee, authorizeOrganizer, requireAuth } from '../middlewares/auth.js';
+import { createEvent, getAllEvents, registerForEvent } from '../controllers/eventController.js';
+const eventRouter = express.Router();
 
-router.get('/', getEvents);
-router.post('/', auth, createEvent);
-router.put('/:id', auth, updateEvent);
-router.delete('/:id', auth, deleteEvent);
-router.post('/:id/register', auth, registerParticipant);
 
-module.exports = router;
+eventRouter.get('/',requireAuth, getAllEvents);
+eventRouter.post('/create-events',requireAuth, authorizeOrganizer, createEvent);
+eventRouter.post('/:id/register',requireAuth,authorizeAttendee, registerForEvent);
+
+export default eventRouter;
